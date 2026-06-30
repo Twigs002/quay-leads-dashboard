@@ -39,7 +39,9 @@ st.caption(f"{len(view):,} rows")
 display_cols = [
     "Datestamp", "Source", "ClientName", "Email", "PhoneNumber",
     "PropertyAddress", "Suburb", "PropertyType", "Division",
-    "IsLead", "action_flag", "deal_id", "deal_stage", "actioned", "actioned_at", "actioned_by",
+    "IsLead", "action_flag", "deal_id", "current_stage", "deal_stage",
+    "amount", "close_date", "hs_last_modified",
+    "actioned", "actioned_at", "actioned_by",
 ]
 present = [c for c in display_cols if c in view.columns]
 
@@ -61,7 +63,11 @@ st.dataframe(
         "IsLead": "Lead type",
         "action_flag": "Status",
         "deal_id": "Deal ID",
-        "deal_stage": "Stage",
+        "current_stage": "HubSpot stage (live)",
+        "deal_stage": "Stage (snapshot)",
+        "amount": st.column_config.NumberColumn("Deal R", format="R%,.0f"),
+        "close_date": st.column_config.DatetimeColumn("Expected close", format="YYYY-MM-DD"),
+        "hs_last_modified": st.column_config.DatetimeColumn("Last touched", format="YYYY-MM-DD"),
         "actioned": st.column_config.CheckboxColumn("Actioned"),
         "actioned_at": st.column_config.DatetimeColumn("Actioned at", format="YYYY-MM-DD HH:mm"),
         "actioned_by": "Actioned by",

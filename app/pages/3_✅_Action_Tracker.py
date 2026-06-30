@@ -44,7 +44,7 @@ st.markdown(
 cols_for_editor = [
     "Datestamp", "ClientName", "Email", "PhoneNumber",
     "Suburb", "Division", "Source", "IsLead",
-    "action_flag", "deal_id", "actioned", "action_note",
+    "action_flag", "deal_id", "current_stage", "actioned", "action_note",
 ]
 present_cols = [c for c in cols_for_editor if c in work.columns]
 work = work[present_cols].sort_values("Datestamp", ascending=False).reset_index(drop=True)
@@ -67,6 +67,7 @@ edited = st.data_editor(
         "IsLead": "Lead type",
         "action_flag": st.column_config.TextColumn("Status"),
         "deal_id": st.column_config.TextColumn("Deal ID"),
+        "current_stage": st.column_config.TextColumn("HubSpot stage (live)"),
         "actioned": st.column_config.CheckboxColumn("Actioned"),
         "action_note": st.column_config.TextColumn("Note"),
     },

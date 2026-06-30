@@ -9,7 +9,7 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
-from . import deals, sheets
+from . import deals, hubspot, sheets
 
 
 def _tab(name_key: str, default: str) -> str:
@@ -29,6 +29,7 @@ def load_leads() -> pd.DataFrame:
         df["IsLead"] = df["IsLead"].where(df["IsLead"].astype(str).str.len() <= 40, "Other")
     df = deals.annotate(df)
     df = _merge_actioned(df)
+    df = hubspot.enrich_leads(df)
     return df.reset_index(drop=True)
 
 

@@ -7,7 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from lib import auth, data
+from lib import auth, data, hubspot
 from lib.filters import render_sidebar
 from lib.theme import ACCENT, PALETTE, install_theme
 
@@ -43,14 +43,34 @@ funnel = go.Figure(go.Funnel(
 funnel.update_layout(height=380, margin=dict(l=8, r=8, t=8, b=8))
 st.plotly_chart(funnel, use_container_width=True)
 
-# ── Deal stage distribution ───────────────────────────────────────────────
-st.subheader("Deal stages (where the open deals sit)")
+# ── Live HubSpot deal stages ──────────────────────────────────────────────
+st.subheader("Where the deals are on HubSpot")
 
-with_deal = view[view["has_deal"] & view["deal_stage"].notna()].copy()
-if with_deal.empty:
-    st.info("No DealID + stage data in this slice.")
+col_a, col_b = st.columns([1, 4])
+if hubspot.is_configured():
+    if col_a.button("↻ Refresh from HubSpot", use_container_width=True):
+        hubspot.clear_cache()
+        data.load_leads.clear()
+        st.rerun()
+    col_b.caption(
+        "Live stages pulled from HubSpot, cached 30 min. "
+        "Click refresh to force a fresh fetch."
+    )
 else:
-    by_stage = with_deal["deal_stage"].astype(str).value_counts().reset_index()
+    col_b.warning(
+        "HubSpot token not configured — falling back to the snapshot stage "
+        "from the Excel/Sheet. Add `[hubspot] token = \"…\"` to "
+        "`.streamlit/secrets.toml` to enable live data."
+    )
+
+with_deal = view[view["has_deal"]].copy()
+stage_col = "current_stage" if (hubspot.is_configured() and "current_stage" in with_deal.columns) else "deal_stage"
+with_deal = with_deal[with_deal[stage_col].notna()]
+
+if with_deal.empty:
+    st.info("No deal-stage data in this slice.")
+else:
+    by_stage = with_deal[stage_col].astype(str).value_counts().reset_index()
     by_stage.columns = ["stage", "count"]
     fig = px.bar(
         by_stage.iloc[::-1], x="count", y="stage", orientation="h",
@@ -59,6 +79,14 @@ else:
     fig.update_traces(marker_color=ACCENT)
     fig.update_layout(height=420)
     st.plotly_chart(fig, use_container_width=True)
+
+    if hubspot.is_configured() and "amount" in with_deal.columns:
+        total_value = pd.to_numeric(with_deal["amount"], errors="coerce").sum()
+        if total_value:
+            st.caption(
+                f"**Total open deal value (filtered)**: R{total_value:,.0f}  "
+                f"·  median R{pd.to_numeric(with_deal['amount'], errors='coerce').median():,.0f}"
+            )
 
 # ── Division leaderboard ──────────────────────────────────────────────────
 st.subheader("Division leaderboard")

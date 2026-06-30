@@ -113,6 +113,35 @@ the right GitHub account.
 
 ---
 
+## HubSpot — live deal stage
+
+When a `[hubspot] token` is set in secrets, every `DealID` parsed out of
+`HubspotStatus2` is enriched with live data from HubSpot:
+
+- `current_stage` — the live stage label (translated from stage IDs via
+  `/crm/v3/pipelines/deals`)
+- `amount`, `close_date`, `hs_last_modified`, `hubspot_owner_id`,
+  `deal_name`
+
+Surfaces:
+- **Pipeline → Where the deals are on HubSpot** — live stage bar +
+  total/median deal value, with a ↻ **Refresh from HubSpot** button
+- **Action Tracker** — extra `HubSpot stage (live)` column
+- **Raw Data** — adds `current_stage`, `Deal R`, `Expected close`,
+  `Last touched`, sortable + searchable
+
+Implementation notes:
+- Batch reads of 100 IDs per call, ~3 req/s (gentle on HubSpot's
+  10 req/s limit), 6-attempt back-off on 429 / 5xx
+- Results cached 30 min via `@st.cache_data`; pipelines cached 1 h
+- Token: paste your Private App token under `[hubspot] token` in
+  `.streamlit/secrets.toml` (same one used by `Twigs002/quay-hubspot`'s
+  GitHub Actions secret `HUBSPOT_TOKEN`)
+- Degrades gracefully: no token = dashboard still works, just shows the
+  stale snapshot stage from the workbook
+
+---
+
 ## Auto-update from the Google Sheet
 
 Three options, recommended first.
