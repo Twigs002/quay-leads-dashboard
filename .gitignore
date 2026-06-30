@@ -1,6 +1,9 @@
 ## PII / secrets — CRITICAL: never commit
-.streamlit/secrets.toml
+.streamlit/secrets*.toml
+!.streamlit/secrets.example.toml
 secrets.toml
+secrets*.toml
+!*.example.toml
 *.env
 .env
 .env.*
