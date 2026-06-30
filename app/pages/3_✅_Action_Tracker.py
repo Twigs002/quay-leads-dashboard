@@ -1,8 +1,11 @@
 """Action Tracker — editable list of leads needing follow-up.
 
-The Actioned tickbox writes to an append-only `Actioned` tab in the
-source Google Sheet (or a local CSV in dev). The original Leads tab is
-never mutated.
+A lead is automatically **Worked** once a call is logged on its HubSpot
+deal (see lib/data._compute_worked). This page is the **manual
+fallback** for leads with no deal yet or where the call wasn't logged
+in HubSpot — tick **Mark as worked** to record an override in Supabase.
+
+The source Google Sheet is never edited; writes go to public.lead_actions.
 """
 
 from __future__ import annotations
@@ -20,41 +23,47 @@ user = auth.gate()
 
 st.title("Action Tracker")
 st.caption(
-    "Leads needing follow-up. Tick the **Actioned** column and click "
-    "**Save changes** — each tick appends a row to the Actioned log; "
-    "the source Leads tab is never edited."
+    "Auto: any lead whose HubSpot deal has a logged call is marked **Worked**. "
+    "Use this page to *manually* mark leads as worked when you've followed up "
+    "outside HubSpot. Source sheet is never edited; marks save to Supabase."
 )
 
 leads = data.load_leads()
 filters = render_sidebar(leads)
 view = filters.apply(leads)
 
-# Default: only leads with no DealID. Toggle to show all.
-show_all = st.toggle("Show all leads (incl. ones with a deal)", value=False)
-work = view if show_all else view[~view["has_deal"]]
+# Default: only leads that aren't worked yet. Toggle to show everything.
+show_all = st.toggle("Show all leads (including ones already worked)", value=False)
+work = view if show_all else view[~view["worked"]]
 work = work[work["Email"].notna() & (work["Email"].astype(str).str.strip() != "")]
 
 st.markdown(
     f"**{len(work):,}** leads in view · "
-    f"**{int(work['actioned'].sum()):,}** already actioned · "
-    f"**{int((~work['actioned']).sum()):,}** outstanding"
+    f"**{int(work['worked'].sum()):,}** already worked · "
+    f"**{int((~work['worked']).sum()):,}** outstanding"
 )
+
+# Build the editor df — `worked` is read-only (it's derived); only the
+# manual-override checkbox and note are editable.
+work_view = work.copy()
+work_view["mark_as_worked"] = work_view["worked_via_mark"].fillna(False).astype(bool)
 
 cols_for_editor = [
     "Datestamp", "ClientName", "Email", "PhoneNumber",
     "Suburb", "Division", "Source", "IsLead",
-    "action_flag", "deal_id", "current_stage", "actioned", "action_note",
+    "action_flag", "deal_id", "current_stage", "num_calls",
+    "worked", "mark_as_worked", "action_note",
 ]
-present_cols = [c for c in cols_for_editor if c in work.columns]
-work = work[present_cols].sort_values("Datestamp", ascending=False).reset_index(drop=True)
+present_cols = [c for c in cols_for_editor if c in work_view.columns]
+work_view = work_view[present_cols].sort_values("Datestamp", ascending=False).reset_index(drop=True)
 
 edited = st.data_editor(
-    work,
+    work_view,
     use_container_width=True,
     hide_index=True,
     height=560,
     num_rows="fixed",
-    disabled=[c for c in present_cols if c not in ("actioned", "action_note")],
+    disabled=[c for c in present_cols if c not in ("mark_as_worked", "action_note")],
     column_config={
         "Datestamp": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD HH:mm"),
         "ClientName": "Client",
@@ -66,23 +75,25 @@ edited = st.data_editor(
         "IsLead": "Lead type",
         "action_flag": st.column_config.TextColumn("Status"),
         "deal_id": st.column_config.TextColumn("Deal ID"),
-        "current_stage": st.column_config.TextColumn("HubSpot stage (live)"),
-        "actioned": st.column_config.CheckboxColumn("Actioned"),
+        "current_stage": st.column_config.TextColumn("HubSpot stage"),
+        "num_calls": st.column_config.NumberColumn("Calls logged", format="%d"),
+        "worked": st.column_config.CheckboxColumn("Worked", help="Derived: call logged OR manual mark"),
+        "mark_as_worked": st.column_config.CheckboxColumn("Mark as worked", help="Manual override — saves to Supabase"),
         "action_note": st.column_config.TextColumn("Note"),
     },
     key="action_editor",
 )
 
 col1, col2 = st.columns([1, 4])
-if col1.button("💾 Save changes", type="primary", use_container_width=True):
-    # Find rows that were just flipped to True from False
-    before = work.set_index("Email")["actioned"].fillna(False)
-    after = edited.set_index("Email")["actioned"].fillna(False)
+if col1.button("💾 Save manual marks", type="primary", use_container_width=True):
+    before = work_view.set_index("Email")["mark_as_worked"].fillna(False)
+    after = edited.set_index("Email")["mark_as_worked"].fillna(False)
     notes_after = edited.set_index("Email")["action_note"].fillna("")
+    notes_before = work_view.set_index("Email")["action_note"].fillna("")
 
-    newly_actioned = after & (~before)
-    note_changed = (notes_after != work.set_index("Email")["action_note"].fillna(""))
-    to_log = (newly_actioned | (after & note_changed))
+    newly_marked = after & (~before)
+    note_changed = (notes_after != notes_before)
+    to_log = (newly_marked | (after & note_changed))
 
     n_written = 0
     errors: list[str] = []
@@ -96,24 +107,25 @@ if col1.button("💾 Save changes", type="primary", use_container_width=True):
             errors.append(f"{email}: {e}")
 
     if n_written:
-        st.success(f"Saved {n_written} actioned record(s) to the log.")
+        st.success(f"Saved {n_written} manual mark(s).")
         data.load_leads.clear()
     else:
-        st.info("No changes detected.")
+        st.info("No new manual marks to save.")
     if errors:
         st.error("Some rows failed:\n" + "\n".join(errors))
 
 col2.caption(
-    f"Logged-in user **{user['name']}** is recorded as the actioner. "
-    "Notes are optional and append to the same log row."
+    f"Logged-in user **{user['name']}** is recorded against each mark. "
+    "Notes are optional. The HubSpot-call-derived **Worked** column is "
+    "read-only — log the call in HubSpot to flip it."
 )
 
 # ── Recent activity ──────────────────────────────────────────────────────
 st.divider()
-st.subheader("Recent actioned activity")
+st.subheader("Recent manual marks")
 log = actions.load()
 if log.empty:
-    st.caption("No actioned events yet.")
+    st.caption("No manual marks logged yet.")
 else:
     log_view = log.copy().sort_values("actioned_at", ascending=False).head(50)
     st.dataframe(log_view, hide_index=True, use_container_width=True)

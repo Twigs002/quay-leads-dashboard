@@ -30,7 +30,26 @@ def load_leads() -> pd.DataFrame:
     df = deals.annotate(df)
     df = _merge_actioned(df)
     df = hubspot.enrich_leads(df)
+    df = _compute_worked(df)
     return df.reset_index(drop=True)
+
+
+def _compute_worked(leads: pd.DataFrame) -> pd.DataFrame:
+    """A lead is 'worked' if any of:
+       - its HubSpot deal has ≥1 logged call (num_calls > 0), OR
+       - it's been manually marked via the Action Tracker (actioned=True).
+
+    The HubSpot signal is the primary one; the manual mark is the fallback
+    for leads without a deal yet.
+    """
+    out = leads.copy()
+    has_call = out.get("num_calls", pd.Series(0, index=out.index)).fillna(0) > 0
+    has_manual = out.get("actioned", pd.Series(False, index=out.index)).fillna(False)
+    out["worked"] = (has_call | has_manual).astype(bool)
+    # Per-source flags for diagnostics / column display
+    out["worked_via_call"] = has_call
+    out["worked_via_mark"] = has_manual
+    return out
 
 
 @st.cache_data(ttl=600, show_spinner="Loading raw leads…")

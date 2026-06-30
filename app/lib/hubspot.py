@@ -157,6 +157,38 @@ def fetch_deals(deal_ids_tuple: tuple[str, ...]) -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=1800, show_spinner="Counting logged calls on deals…")
+def fetch_call_counts(deal_ids_tuple: tuple[str, ...]) -> dict[str, int]:
+    """Return {deal_id: number_of_logged_calls} via the v4 associations API.
+
+    A deal is considered 'worked' if its call count is > 0.
+    """
+    if not is_configured() or not deal_ids_tuple:
+        return {}
+
+    sess = _session()
+    out: dict[str, int] = {}
+    for i in range(0, len(deal_ids_tuple), BATCH_SIZE):
+        chunk = deal_ids_tuple[i : i + BATCH_SIZE]
+        body = {"inputs": [{"id": did} for did in chunk]}
+        try:
+            data = _safe_request(
+                sess, "POST",
+                f"{API_ROOT}/crm/v4/associations/deals/calls/batch/read",
+                json=body,
+            )
+        except RuntimeError:
+            continue
+        for rec in data.get("results", []):
+            did = (rec.get("from") or {}).get("id")
+            if did:
+                out[str(did)] = len(rec.get("to") or [])
+        # IDs with no associations don't appear in results — they're 0
+        for did in chunk:
+            out.setdefault(str(did), 0)
+    return out
+
+
 def _flatten(rec: dict) -> dict:
     props = rec.get("properties") or {}
     return {
@@ -207,9 +239,13 @@ def enrich_leads(leads: pd.DataFrame) -> pd.DataFrame:
         live[["deal_id", "current_stage", "deal_name", "amount", "close_date", "hs_last_modified", "hubspot_owner_id"]],
         on="deal_id", how="left",
     )
+    # Logged-call count per deal → drives the "worked" semantic
+    call_counts = fetch_call_counts(tuple(sorted(ids)))
+    out["num_calls"] = out["deal_id"].map(call_counts).fillna(0).astype(int)
     return out
 
 
 def clear_cache() -> None:
     fetch_deals.clear()
     fetch_stage_labels.clear()
+    fetch_call_counts.clear()

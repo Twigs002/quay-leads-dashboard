@@ -41,7 +41,7 @@ display_cols = [
     "PropertyAddress", "Suburb", "PropertyType", "Division",
     "IsLead", "action_flag", "deal_id", "current_stage", "deal_stage",
     "amount", "close_date", "hs_last_modified",
-    "actioned", "actioned_at", "actioned_by",
+    "num_calls", "worked", "actioned_at", "actioned_by",
 ]
 present = [c for c in display_cols if c in view.columns]
 
@@ -68,9 +68,10 @@ st.dataframe(
         "amount": st.column_config.NumberColumn("Deal R", format="R%,.0f"),
         "close_date": st.column_config.DatetimeColumn("Expected close", format="YYYY-MM-DD"),
         "hs_last_modified": st.column_config.DatetimeColumn("Last touched", format="YYYY-MM-DD"),
-        "actioned": st.column_config.CheckboxColumn("Actioned"),
-        "actioned_at": st.column_config.DatetimeColumn("Actioned at", format="YYYY-MM-DD HH:mm"),
-        "actioned_by": "Actioned by",
+        "num_calls": st.column_config.NumberColumn("Calls", format="%d"),
+        "worked": st.column_config.CheckboxColumn("Worked"),
+        "actioned_at": st.column_config.DatetimeColumn("Manually marked at", format="YYYY-MM-DD HH:mm"),
+        "actioned_by": "Marked by",
     },
 )
 

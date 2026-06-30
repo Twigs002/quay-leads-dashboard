@@ -31,12 +31,12 @@ st.subheader("Conversion funnel")
 
 n_leads = len(view)
 n_qualified = int((view["IsLead"].isin(["Seller Lead", "Owner", "Buyer Lead", "Rental Lead"])).sum())
-n_actioned = int(view["actioned"].sum())
 n_deal = int(view["has_deal"].sum())
+n_worked = int(view["worked"].sum())
 
 funnel = go.Figure(go.Funnel(
-    y=["Leads received", "Qualified lead-type", "Actioned by team", "Deal created"],
-    x=[n_leads, n_qualified, n_actioned, n_deal],
+    y=["Leads received", "Qualified lead-type", "Deal created", "Worked (call logged)"],
+    x=[n_leads, n_qualified, n_deal, n_worked],
     textinfo="value+percent initial",
     marker={"color": PALETTE[: 4]},
 ))
@@ -97,23 +97,27 @@ board = (
     .groupby("Division")
     .agg(
         leads=("Division", "size"),
-        actioned=("actioned", "sum"),
+        worked=("worked", "sum"),
         deals=("has_deal", "sum"),
     )
     .reset_index()
 )
-board["actioned_pct"] = (board["actioned"] / board["leads"] * 100).round(1)
+board["worked_pct"] = (board["worked"] / board["leads"] * 100).round(1)
 board["deal_pct"] = (board["deals"] / board["leads"] * 100).round(1)
 board = board.sort_values("leads", ascending=False)
 
+st.caption(
+    "**Worked** = HubSpot deal has ≥1 logged call, OR the lead was "
+    "manually marked in the Action Tracker."
+)
 st.dataframe(
     board, hide_index=True, use_container_width=True,
     column_config={
         "Division": "Division",
         "leads": st.column_config.NumberColumn("Leads", format="%d"),
-        "actioned": st.column_config.NumberColumn("Actioned", format="%d"),
+        "worked": st.column_config.NumberColumn("Worked", format="%d"),
         "deals": st.column_config.NumberColumn("Deals", format="%d"),
-        "actioned_pct": st.column_config.ProgressColumn("Actioned %", min_value=0, max_value=100, format="%.1f%%"),
+        "worked_pct": st.column_config.ProgressColumn("Worked %", min_value=0, max_value=100, format="%.1f%%"),
         "deal_pct": st.column_config.ProgressColumn("Deal %", min_value=0, max_value=100, format="%.1f%%"),
     },
 )
@@ -177,10 +181,10 @@ if sel_div:
     by_stage = (
         sub.groupby("__stage").agg(
             leads=("__stage", "size"),
-            actioned=("actioned", "sum"),
+            worked=("worked", "sum"),
         ).reset_index()
     )
-    by_stage["actioned_pct"] = (by_stage["actioned"] / by_stage["leads"] * 100).round(1)
+    by_stage["worked_pct"] = (by_stage["worked"] / by_stage["leads"] * 100).round(1)
 
     if hubspot.is_configured() and "amount" in sub.columns:
         amount_by_stage = (
@@ -203,9 +207,9 @@ if sel_div:
     col_config = {
         "stage": "HubSpot stage",
         "leads": st.column_config.NumberColumn("Leads", format="%d"),
-        "actioned": st.column_config.NumberColumn("Actioned", format="%d"),
-        "actioned_pct": st.column_config.ProgressColumn(
-            "Actioned %", min_value=0, max_value=100, format="%.1f%%",
+        "worked": st.column_config.NumberColumn("Worked", format="%d"),
+        "worked_pct": st.column_config.ProgressColumn(
+            "Worked %", min_value=0, max_value=100, format="%.1f%%",
         ),
     }
     if "total_value" in by_stage.columns:

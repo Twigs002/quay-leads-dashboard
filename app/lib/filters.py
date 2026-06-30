@@ -59,7 +59,7 @@ def render_sidebar(leads: pd.DataFrame) -> Filters:
     sources = st.sidebar.multiselect("Sources", src_opts, default=[])
     divisions = st.sidebar.multiselect("Divisions", div_opts, default=[])
     lead_types = st.sidebar.multiselect("Lead type", type_opts, default=[])
-    action_only = st.sidebar.toggle("Show only Retry / Action Needed", value=False)
+    action_only = st.sidebar.toggle("Show only leads with no deal yet", value=False)
 
     return Filters(
         date_from=pd.Timestamp(d_from),

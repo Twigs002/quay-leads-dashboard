@@ -36,7 +36,7 @@ last_7 = view[view["Datestamp"] >= today - pd.Timedelta(days=7)]
 seller = view[view["IsLead"] == "Seller Lead"]
 owner = view[view["IsLead"] == "Owner"]
 has_deal = view[view["has_deal"]]
-actioned = view[view["actioned"]]
+worked = view[view["worked"]]
 
 kpi.kpi_row([
     ("Leads in view", len(view), None),
@@ -44,7 +44,7 @@ kpi.kpi_row([
     ("Last 7 days", len(last_7), None),
     ("Seller leads", len(seller), kpi.pct(len(seller), len(view))),
     ("Has deal", len(has_deal), kpi.pct(len(has_deal), len(view))),
-    ("Actioned", len(actioned), kpi.pct(len(actioned), len(view))),
+    ("Worked", len(worked), kpi.pct(len(worked), len(view))),
 ])
 
 st.divider()
@@ -99,10 +99,10 @@ with left:
 
 with right:
     st.subheader("Needs attention")
-    backlog = view[~view["has_deal"] & ~view["actioned"]]
-    st.metric("Unactioned, no deal", f"{len(backlog):,}")
+    backlog = view[~view["has_deal"] & ~view["worked"]]
+    st.metric("Unworked, no deal", f"{len(backlog):,}")
     st.caption(
-        "These are leads with no DealID and no entry in the Actioned log. "
+        "These are leads with no DealID and no logged call. "
         "Work them in **Action Tracker**."
     )
     st.page_link("pages/3_✅_Action_Tracker.py", label="→ Open Action Tracker", icon="✅")
