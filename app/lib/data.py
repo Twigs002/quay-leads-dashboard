@@ -35,20 +35,15 @@ def load_leads() -> pd.DataFrame:
 
 
 def _compute_worked(leads: pd.DataFrame) -> pd.DataFrame:
-    """A lead is 'worked' if any of:
-       - its HubSpot deal has ≥1 logged call (num_calls > 0), OR
-       - it's been manually marked via the Action Tracker (actioned=True).
+    """A lead is 'worked' iff its HubSpot deal has ≥1 logged call.
 
-    The HubSpot signal is the primary one; the manual mark is the fallback
-    for leads without a deal yet.
+    Manual marks in the Action Tracker do NOT count — Worked is purely
+    a HubSpot signal so the dashboard always reflects what's recorded
+    in the CRM.
     """
     out = leads.copy()
     has_call = out.get("num_calls", pd.Series(0, index=out.index)).fillna(0) > 0
-    has_manual = out.get("actioned", pd.Series(False, index=out.index)).fillna(False)
-    out["worked"] = (has_call | has_manual).astype(bool)
-    # Per-source flags for diagnostics / column display
-    out["worked_via_call"] = has_call
-    out["worked_via_mark"] = has_manual
+    out["worked"] = has_call.astype(bool)
     return out
 
 

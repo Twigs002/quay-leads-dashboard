@@ -1,11 +1,14 @@
-"""Action Tracker — editable list of leads needing follow-up.
+"""Action Tracker — note board for leads needing follow-up.
 
-A lead is automatically **Worked** once a call is logged on its HubSpot
-deal (see lib/data._compute_worked). This page is the **manual
-fallback** for leads with no deal yet or where the call wasn't logged
-in HubSpot — tick **Mark as worked** to record an override in Supabase.
+**Worked** (derived) = the lead's HubSpot deal has ≥1 logged call. To
+flip a lead to Worked, log the call in HubSpot — this page does not
+override the Worked signal.
 
-The source Google Sheet is never edited; writes go to public.lead_actions.
+What this page IS for: persisting **notes** against a lead (e.g.
+"no answer, try Tuesday"). Notes live in Supabase (public.lead_actions)
+and are joined back onto the leads frame on read.
+
+The source Google Sheet is never edited.
 """
 
 from __future__ import annotations
@@ -23,47 +26,43 @@ user = auth.gate()
 
 st.title("Action Tracker")
 st.caption(
-    "Auto: any lead whose HubSpot deal has a logged call is marked **Worked**. "
-    "Use this page to *manually* mark leads as worked when you've followed up "
-    "outside HubSpot. Source sheet is never edited; marks save to Supabase."
+    "**Worked** comes from HubSpot — a deal with a logged call is Worked. "
+    "Use this page to add **notes** against leads you've followed up on "
+    "(useful for leads with no deal yet, or context that doesn't fit a "
+    "HubSpot field). Notes save to Supabase; the source sheet is never edited."
 )
 
 leads = data.load_leads()
 filters = render_sidebar(leads)
 view = filters.apply(leads)
 
-# Default: only leads that aren't worked yet. Toggle to show everything.
+# Default: only leads that aren't Worked. Toggle to see everything.
 show_all = st.toggle("Show all leads (including ones already worked)", value=False)
 work = view if show_all else view[~view["worked"]]
 work = work[work["Email"].notna() & (work["Email"].astype(str).str.strip() != "")]
 
 st.markdown(
     f"**{len(work):,}** leads in view · "
-    f"**{int(work['worked'].sum()):,}** already worked · "
+    f"**{int(work['worked'].sum()):,}** already worked (per HubSpot) · "
     f"**{int((~work['worked']).sum()):,}** outstanding"
 )
-
-# Build the editor df — `worked` is read-only (it's derived); only the
-# manual-override checkbox and note are editable.
-work_view = work.copy()
-work_view["mark_as_worked"] = work_view["worked_via_mark"].fillna(False).astype(bool)
 
 cols_for_editor = [
     "Datestamp", "ClientName", "Email", "PhoneNumber",
     "Suburb", "Division", "Source", "IsLead",
     "action_flag", "deal_id", "current_stage", "num_calls",
-    "worked", "mark_as_worked", "action_note",
+    "worked", "action_note",
 ]
-present_cols = [c for c in cols_for_editor if c in work_view.columns]
-work_view = work_view[present_cols].sort_values("Datestamp", ascending=False).reset_index(drop=True)
+present_cols = [c for c in cols_for_editor if c in work.columns]
+work = work[present_cols].sort_values("Datestamp", ascending=False).reset_index(drop=True)
 
 edited = st.data_editor(
-    work_view,
+    work,
     use_container_width=True,
     hide_index=True,
     height=560,
     num_rows="fixed",
-    disabled=[c for c in present_cols if c not in ("mark_as_worked", "action_note")],
+    disabled=[c for c in present_cols if c != "action_note"],
     column_config={
         "Datestamp": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD HH:mm"),
         "ClientName": "Client",
@@ -77,27 +76,21 @@ edited = st.data_editor(
         "deal_id": st.column_config.TextColumn("Deal ID"),
         "current_stage": st.column_config.TextColumn("HubSpot stage"),
         "num_calls": st.column_config.NumberColumn("Calls logged", format="%d"),
-        "worked": st.column_config.CheckboxColumn("Worked", help="Derived: call logged OR manual mark"),
-        "mark_as_worked": st.column_config.CheckboxColumn("Mark as worked", help="Manual override — saves to Supabase"),
-        "action_note": st.column_config.TextColumn("Note"),
+        "worked": st.column_config.CheckboxColumn("Worked", help="Derived from HubSpot — read-only"),
+        "action_note": st.column_config.TextColumn("Note", help="Your follow-up note. Saves to Supabase on Save."),
     },
     key="action_editor",
 )
 
 col1, col2 = st.columns([1, 4])
-if col1.button("💾 Save manual marks", type="primary", use_container_width=True):
-    before = work_view.set_index("Email")["mark_as_worked"].fillna(False)
-    after = edited.set_index("Email")["mark_as_worked"].fillna(False)
+if col1.button("💾 Save notes", type="primary", use_container_width=True):
     notes_after = edited.set_index("Email")["action_note"].fillna("")
-    notes_before = work_view.set_index("Email")["action_note"].fillna("")
-
-    newly_marked = after & (~before)
-    note_changed = (notes_after != notes_before)
-    to_log = (newly_marked | (after & note_changed))
+    notes_before = work.set_index("Email")["action_note"].fillna("")
+    changed = (notes_after != notes_before) & (notes_after.str.strip() != "")
 
     n_written = 0
     errors: list[str] = []
-    for email, write in to_log.items():
+    for email, write in changed.items():
         if not write:
             continue
         try:
@@ -107,25 +100,37 @@ if col1.button("💾 Save manual marks", type="primary", use_container_width=Tru
             errors.append(f"{email}: {e}")
 
     if n_written:
-        st.success(f"Saved {n_written} manual mark(s).")
+        st.success(f"Saved {n_written} note(s).")
         data.load_leads.clear()
     else:
-        st.info("No new manual marks to save.")
+        st.info("No note changes to save.")
     if errors:
         st.error("Some rows failed:\n" + "\n".join(errors))
 
 col2.caption(
-    f"Logged-in user **{user['name']}** is recorded against each mark. "
-    "Notes are optional. The HubSpot-call-derived **Worked** column is "
-    "read-only — log the call in HubSpot to flip it."
+    f"Logged-in user **{user['name']}** is recorded against each note. "
+    "Notes are append-only — every save adds a row to the log, so you can "
+    "see a chronology of follow-ups."
 )
 
 # ── Recent activity ──────────────────────────────────────────────────────
 st.divider()
-st.subheader("Recent manual marks")
+st.subheader("Recent notes")
 log = actions.load()
 if log.empty:
-    st.caption("No manual marks logged yet.")
+    st.caption("No notes logged yet.")
 else:
     log_view = log.copy().sort_values("actioned_at", ascending=False).head(50)
-    st.dataframe(log_view, hide_index=True, use_container_width=True)
+    st.dataframe(
+        log_view,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "actioned_at": st.column_config.DatetimeColumn("When", format="YYYY-MM-DD HH:mm"),
+            "actioned_by": "By",
+            "email": "Email",
+            "note": "Note",
+            "actioned": None,  # hide — always true, not meaningful for notes-only flow
+            "id": None,
+        },
+    )
