@@ -9,7 +9,7 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
-from . import deals, hubspot, sheets
+from . import actions, deals, hubspot, sheets
 
 
 def _tab(name_key: str, default: str) -> str:
@@ -75,17 +75,20 @@ def load_meta_ads() -> pd.DataFrame:
 
 
 def _merge_actioned(leads: pd.DataFrame) -> pd.DataFrame:
-    """LEFT JOIN the Actioned log onto leads via email."""
-    log = sheets.read_actioned()
-    if log.empty or "Email" not in leads.columns:
+    """LEFT JOIN the Supabase lead_actions log onto leads via email."""
+    if "Email" not in leads.columns:
         leads["actioned"] = False
         leads["actioned_at"] = pd.NaT
         leads["actioned_by"] = None
         leads["action_note"] = None
         return leads
-    log = log.copy()
-    log["email_lc"] = log["email"].astype(str).str.lower()
-    log = log.sort_values("actioned_at").drop_duplicates("email_lc", keep="last")
+    log = actions.latest_per_email()
+    if log.empty:
+        leads["actioned"] = False
+        leads["actioned_at"] = pd.NaT
+        leads["actioned_by"] = None
+        leads["action_note"] = None
+        return leads
     out = leads.copy()
     out["email_lc"] = out["Email"].astype(str).str.lower()
     merged = out.merge(

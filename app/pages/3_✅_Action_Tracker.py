@@ -10,9 +10,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from lib import auth, data
+from lib import actions, auth, data
 from lib.filters import render_sidebar
-from lib.sheets import append_actioned, read_actioned
 from lib.theme import install_theme
 
 st.set_page_config(page_title="Action Tracker · Quay 1", page_icon="✅", layout="wide")
@@ -91,7 +90,7 @@ if col1.button("💾 Save changes", type="primary", use_container_width=True):
         if not write:
             continue
         try:
-            append_actioned(email=str(email), actioned_by=user["name"], note=str(notes_after.get(email, "")))
+            actions.append(email=str(email), actioned_by=user["username"], note=str(notes_after.get(email, "")))
             n_written += 1
         except Exception as e:
             errors.append(f"{email}: {e}")
@@ -112,7 +111,7 @@ col2.caption(
 # ── Recent activity ──────────────────────────────────────────────────────
 st.divider()
 st.subheader("Recent actioned activity")
-log = read_actioned()
+log = actions.load()
 if log.empty:
     st.caption("No actioned events yet.")
 else:
