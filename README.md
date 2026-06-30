@@ -181,29 +181,36 @@ This keeps the source of truth pristine and gives a full audit trail
 
 ## Auth + access control
 
-PINs are bcrypt-hashed in `secrets.toml`. Add a user:
+The dashboard delegates login to the **same Supabase project that powers
+quay-clock** — staff sign in with their existing clock-in/out username
+and PIN. The leads dashboard additionally requires
+`is_super = true` OR `is_admin = true` on the staff row (set in the
+quay-clock admin UI under Staff → edit → Superuser/Admin).
 
-```bash
-python3 scripts/hash_pin.py 5678
-# → $2b$12$abc...
-```
+### Setup
 
-Then in `secrets.toml`:
+In `.streamlit/secrets.toml`:
 
 ```toml
-[auth.credentials.usernames.marthinus]
-name = "Marthinus Botha"
-email = "marthinus@quay1.co.za"
-password = "$2b$12$abc..."
-admin = true
+[supabase]
+url      = "https://dqszbqiimbfvmmnpgpsb.supabase.co"
+anon_key = "eyJ...M9RQnJEidyIMZAwbELTSPakiSnvuWBdHTjD7nuOdCZY"
 ```
 
-Users are username + PIN. `admin = true` is reserved for any future
-admin-only surfaces.
+Both values are public (intended for client-side use, gated by Postgres
+RLS) — they're the same values committed in
+[`quay-clock/quay-config.js`](https://github.com/Twigs002/quay-clock/blob/main/quay-config.js).
 
-**Future swap to centralized auth**: `lib/auth.py:gate()` is the single
-seam. Replacing the credentials lookup with an HTTP POST to the
-quay-clock Apps Script `admin_check` action is a ~15-line change.
+### Adding a new user
+
+Add them as a staff member in **quay-clock admin → Staff → New**, then
+tick **Superuser** (or **Admin**). They can log into the leads dashboard
+immediately with the PIN you assigned.
+
+### Disabling access
+
+Untick Superuser/Admin on the staff row, or set the staff row to
+inactive — both take effect on next sign-in.
 
 ---
 

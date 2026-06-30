@@ -1,9 +1,11 @@
 [theme]
-base = "dark"
-primaryColor = "#5EEAD4"
-backgroundColor = "#0B1220"
-secondaryBackgroundColor = "#131C2E"
-textColor = "#E6EDF3"
+# Mirrors quay-dashboard-v2 design tokens: light paper, white cards,
+# navy ink, Quay brand yellow accent.
+base = "light"
+primaryColor = "#FDC503"            # brand yellow
+backgroundColor = "#EEF2F8"         # --paper
+secondaryBackgroundColor = "#FFFFFF" # --card
+textColor = "#1A2746"               # --ink (deep navy)
 font = "sans serif"
 
 [server]
