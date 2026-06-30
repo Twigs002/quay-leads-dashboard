@@ -9,7 +9,7 @@ import streamlit as st
 
 from lib import auth, data, hubspot
 from lib.filters import render_sidebar
-from lib.theme import ACCENT, PALETTE, install_theme
+from lib.theme import ACCENT, PALETTE, install_theme, stage_colors
 
 st.set_page_config(page_title="Pipeline · Quay 1", page_icon="🚀", layout="wide")
 install_theme()
@@ -72,12 +72,13 @@ if with_deal.empty:
 else:
     by_stage = with_deal[stage_col].astype(str).value_counts().reset_index()
     by_stage.columns = ["stage", "count"]
+    cmap = stage_colors(by_stage["stage"].tolist())
     fig = px.bar(
         by_stage.iloc[::-1], x="count", y="stage", orientation="h",
+        color="stage", color_discrete_map=cmap,
         labels={"count": "Deals", "stage": ""},
     )
-    fig.update_traces(marker_color=ACCENT)
-    fig.update_layout(height=420)
+    fig.update_layout(height=420, showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 
     if hubspot.is_configured() and "amount" in with_deal.columns:
@@ -149,10 +150,12 @@ matrix = matrix.sort_values(["Division", "__stage"])
 
 div_order = div_totals.loc[top_divs].sort_values(ascending=True).index.tolist()
 
+cmap_div = stage_colors(stage_order)
 fig = px.bar(
     matrix, x="count", y="Division", color="__stage",
     orientation="h", barmode="stack",
     category_orders={"Division": div_order, "__stage": stage_order},
+    color_discrete_map=cmap_div,
     labels={"count": "Leads", "__stage": "HubSpot stage"},
 )
 fig.update_layout(

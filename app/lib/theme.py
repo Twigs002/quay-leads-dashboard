@@ -72,6 +72,56 @@ def _make_plotly_template() -> go.layout.Template:
     )
 
 
+# ── HubSpot stage colors ──────────────────────────────────────────────
+# Hot deals are the highest-value bucket — they MUST stand out. Warm gets
+# amber, Sold gets green, No deal yet fades into the background so the
+# heat-bearing stages are visually obvious.
+HOT_RED = "#FF3B30"   # vivid red-orange — Hot leads
+WARM_AMBER = "#F59E0B"
+NO_DEAL_GREY = "#CBD5E1"  # muted slate — recedes
+
+# Stages we have explicit semantic colors for. Anything else cycles through
+# the standard PALETTE in deterministic order.
+_STAGE_SEMANTICS = [
+    ("hot",       HOT_RED),
+    ("sold",      GREEN),
+    ("warm",      WARM_AMBER),
+    ("no deal",   NO_DEAL_GREY),
+    ("calling",   "#3D5BA6"),      # brand blue
+    ("inbound",   "#0EA5E9"),      # cyan
+    ("nurture",   "#94A3B8"),      # slate
+    ("external",  "#7C3AED"),      # violet
+    ("listed",    YELLOW_DEEP),
+    ("not my area", "#9CA3AF"),
+    ("delete",    "#9CA3AF"),
+    ("rentals",   "#0F766E"),      # teal
+]
+
+
+def stage_colors(stages: list[str]) -> dict[str, str]:
+    """Map each stage label → color. Hot stays vivid red; cool stages fade.
+
+    Match is case-insensitive substring against _STAGE_SEMANTICS, in order.
+    Unknown stages cycle through PALETTE deterministically.
+    """
+    out: dict[str, str] = {}
+    leftover = [c for c in PALETTE if c not in {HOT_RED, GREEN, WARM_AMBER, NO_DEAL_GREY, YELLOW_DEEP}]
+    leftover_i = 0
+    for s in stages:
+        sl = (s or "").lower()
+        matched = None
+        for needle, color in _STAGE_SEMANTICS:
+            if needle in sl:
+                matched = color
+                break
+        if matched:
+            out[s] = matched
+        else:
+            out[s] = leftover[leftover_i % len(leftover)]
+            leftover_i += 1
+    return out
+
+
 def install_theme() -> None:
     """Register the Plotly template and inject app-wide CSS. Idempotent."""
     pio.templates["quay_light"] = _make_plotly_template()
