@@ -82,12 +82,22 @@ if not leads_v.empty:
         .assign(week=leads_v["Datestamp"].dt.to_period("W").dt.to_timestamp())
         .groupby(["week", "Source"]).size().reset_index(name="leads")
     )
+    # Trim source labels so they don't smash into the next column
+    weekly["Source"] = weekly["Source"].astype(str).map(lambda s: s if len(s) <= 22 else s[:20] + "…")
+    n_cols = 2  # 2 columns × 3 rows = breathing room for long labels + dates
     fig = px.line(
         weekly, x="week", y="leads", color="Source",
-        facet_col="Source", facet_col_wrap=3, facet_col_spacing=0.06,
+        facet_col="Source", facet_col_wrap=n_cols,
+        facet_col_spacing=0.08,
+        facet_row_spacing=0.18,  # avoid titles overlapping the row above's x-ticks
     )
-    fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
-    fig.update_xaxes(matches=None, showticklabels=True, title="")
+    fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1], font=dict(size=13)))
+    fig.update_xaxes(matches=None, showticklabels=True, title="", nticks=4)
     fig.update_yaxes(matches=None, title="")
-    fig.update_layout(height=520, showlegend=False)
+    n_rows = -(-len(top_srcs) // n_cols)  # ceil
+    fig.update_layout(
+        height=max(640, 220 * n_rows + 60),
+        showlegend=False,
+        margin=dict(t=40, b=40, l=20, r=20),
+    )
     st.plotly_chart(fig, use_container_width=True)
