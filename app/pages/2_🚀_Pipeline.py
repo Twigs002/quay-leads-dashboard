@@ -116,3 +116,98 @@ st.dataframe(
         "deal_pct": st.column_config.ProgressColumn("Deal %", min_value=0, max_value=100, format="%.1f%%"),
     },
 )
+
+# ── Per-division stage breakdown ─────────────────────────────────────────
+st.subheader("Where each division's leads sit")
+st.caption(
+    "For every team's leads in this view: how many are in each HubSpot "
+    "stage right now, plus a **No deal yet** bucket for leads with no "
+    "associated HubSpot deal."
+)
+
+bd = view[view["Division"].notna()].copy()
+stage_col = "current_stage" if (hubspot.is_configured() and "current_stage" in bd.columns) else "deal_stage"
+bd["__stage"] = bd[stage_col].astype("object").where(bd[stage_col].notna(), "No deal yet")
+bd["__stage"] = bd["__stage"].astype(str).str.strip().replace({"": "No deal yet", "nan": "No deal yet", "None": "No deal yet"})
+
+div_totals = bd.groupby("Division").size().sort_values(ascending=False)
+top_divs = div_totals.head(15).index.tolist()
+matrix = (
+    bd[bd["Division"].isin(top_divs)]
+    .groupby(["Division", "__stage"]).size().reset_index(name="count")
+)
+
+# Order stages: real HubSpot stages first (by total volume), "No deal yet" last
+stage_totals = (
+    matrix[matrix["__stage"] != "No deal yet"]
+    .groupby("__stage")["count"].sum()
+    .sort_values(ascending=False)
+)
+stage_order = stage_totals.index.tolist() + ["No deal yet"]
+matrix["__stage"] = pd.Categorical(matrix["__stage"], categories=stage_order, ordered=True)
+matrix = matrix.sort_values(["Division", "__stage"])
+
+div_order = div_totals.loc[top_divs].sort_values(ascending=True).index.tolist()
+
+fig = px.bar(
+    matrix, x="count", y="Division", color="__stage",
+    orientation="h", barmode="stack",
+    category_orders={"Division": div_order, "__stage": stage_order},
+    labels={"count": "Leads", "__stage": "HubSpot stage"},
+)
+fig.update_layout(
+    height=max(420, 32 * len(top_divs) + 80),
+    legend_title_text="HubSpot stage",
+    margin=dict(t=20),
+)
+st.plotly_chart(fig, use_container_width=True)
+
+# ── Drill-down: one division, full stage table ───────────────────────────
+sel_div = st.selectbox(
+    "Drill into a division",
+    options=sorted(div_totals.index.tolist()),
+    index=0 if not div_totals.empty else None,
+    key="div_drill",
+)
+if sel_div:
+    sub = bd[bd["Division"] == sel_div]
+    by_stage = (
+        sub.groupby("__stage").agg(
+            leads=("__stage", "size"),
+            actioned=("actioned", "sum"),
+        ).reset_index()
+    )
+    by_stage["actioned_pct"] = (by_stage["actioned"] / by_stage["leads"] * 100).round(1)
+
+    if hubspot.is_configured() and "amount" in sub.columns:
+        amount_by_stage = (
+            sub.assign(amount_num=pd.to_numeric(sub["amount"], errors="coerce"))
+            .groupby("__stage")["amount_num"].sum().reset_index(name="total_value")
+        )
+        by_stage = by_stage.merge(amount_by_stage, on="__stage", how="left")
+    by_stage = by_stage.rename(columns={"__stage": "stage"})
+    by_stage["__sort"] = by_stage["stage"].apply(lambda s: stage_order.index(s) if s in stage_order else 999)
+    by_stage = by_stage.sort_values("__sort").drop(columns="__sort")
+
+    total = int(by_stage["leads"].sum())
+    deals_only = int(by_stage[by_stage["stage"] != "No deal yet"]["leads"].sum())
+    st.markdown(
+        f"**{sel_div}** — {total} leads in this view  ·  "
+        f"{deals_only} have a HubSpot deal  ·  "
+        f"{total - deals_only} have no deal yet"
+    )
+
+    col_config = {
+        "stage": "HubSpot stage",
+        "leads": st.column_config.NumberColumn("Leads", format="%d"),
+        "actioned": st.column_config.NumberColumn("Actioned", format="%d"),
+        "actioned_pct": st.column_config.ProgressColumn(
+            "Actioned %", min_value=0, max_value=100, format="%.1f%%",
+        ),
+    }
+    if "total_value" in by_stage.columns:
+        col_config["total_value"] = st.column_config.NumberColumn(
+            "Open value (R)", format="R%,.0f",
+        )
+
+    st.dataframe(by_stage, hide_index=True, use_container_width=True, column_config=col_config)
